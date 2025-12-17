@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repo
+    - name: Checkout repository
       uses: actions/checkout@v4
 
     - name: Setup Python
@@ -18,21 +18,31 @@ jobs:
       with:
         python-version: '3.10'
 
-    - name: Install dependencies
+    - name: Install Python dependencies
       run: |
         pip install deepharvest
-        sudo apt install -y build-essential
 
-    - name: Build llama.cpp
+    - name: Install system dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y build-essential cmake
+
+    - name: Build llama.cpp (CMake)
       run: |
         git clone https://github.com/ggerganov/llama.cpp
         cd llama.cpp
-        make
-        mv main ../llama
+        mkdir build
+        cd build
+        cmake ..
+        cmake --build . --config Release
+        mv bin/llama-cli ../../llama
 
     - name: Download model
       run: |
         wget https://huggingface.co/TinyLlama/TinyLlama-1.1B-GGUF/resolve/main/tinyllama.gguf -O model.gguf
 
     - name: Run agent
+      env:
+        GMAIL_USER: ${{ secrets.GMAIL_USER }}
+        GMAIL_PASS: ${{ secrets.GMAIL_PASS }}
       run: python run.py
