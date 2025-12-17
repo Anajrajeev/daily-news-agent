@@ -39,7 +39,7 @@ jobs:
 
     - name: Download model
       run: |
-        wget https://huggingface.co/TinyLlama/TinyLlama-1.1B-GGUF/resolve/main/tinyllama.gguf -O model.gguf
+        wget https://hf-mirror.com/TinyLlama/TinyLlama-1.1B-GGUF/resolve/main/tinyllama.gguf -O model.gguf
 
     - name: Run agent
       env:
