@@ -1,0 +1,38 @@
+name: Daily News Agent
+
+on:
+  schedule:
+    - cron: '0 3 * * *'  # 8:30 AM IST
+  workflow_dispatch:
+
+jobs:
+  run-agent:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v4
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        pip install deepharvest
+        sudo apt install -y build-essential
+
+    - name: Build llama.cpp
+      run: |
+        git clone https://github.com/ggerganov/llama.cpp
+        cd llama.cpp
+        make
+        mv main ../llama
+
+    - name: Download model
+      run: |
+        wget https://huggingface.co/TinyLlama/TinyLlama-1.1B-GGUF/resolve/main/tinyllama.gguf -O model.gguf
+
+    - name: Run agent
+      run: python run.py
