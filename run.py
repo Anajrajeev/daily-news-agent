@@ -1,33 +1,65 @@
-from deepharvest import extract
+import os
 import subprocess
+import smtplib
+from email.mime.text import MIMEText
+from deepharvest import extract
 
+# ---------- CONFIG ----------
 SITES = [
-    "https://example.com",
-    "https://example2.com"
+    "https://www.bbc.com/news",
+    "https://www.reuters.com/world",
 ]
 
+MODEL_PATH = "model.gguf"
+LLAMA_BIN = "./llama"
+
+# ---------- EXTRACT CONTENT ----------
 texts = []
 for site in SITES:
-    texts.append(extract(site)["text"])
+    try:
+        data = extract(site)
+        texts.append(data.get("text", ""))
+    except Exception as e:
+        print(f"Failed to extract {site}: {e}")
 
-content = "\n".join(texts)
+content = "\n\n".join(texts)
 
+# ---------- PROMPT ----------
 prompt = f"""
-Scan the content.
-If nothing important happened, reply exactly:
+Scan the following news content.
+
+If nothing important happened, reply EXACTLY with:
 NOTHING WORTHWHILE
 
-Else summarize everything in one paragraph.
-Content:
-{content}
+Otherwise, summarize all important events into ONE concise paragraph.
+
+CONTENT:
+{content[:12000]}
 """
 
-# Call llama.cpp model
+# ---------- RUN LLM ----------
 result = subprocess.check_output([
-    "./llama",
-    "-m", "model.gguf",
+    LLAMA_BIN,
+    "-m", MODEL_PATH,
     "-p", prompt,
-    "-n", "200"
+    "-n", "200",
+    "--temp", "0.2"
 ])
 
-print(result.decode())
+output = result.decode().strip()
+
+# ---------- EMAIL ----------
+EMAIL_FROM = os.getenv("GMAIL_USER")
+EMAIL_TO = os.getenv("GMAIL_USER")
+EMAIL_PASS = os.getenv("GMAIL_PASS")
+
+msg = MIMEText(output)
+msg["Subject"] = "Daily News Summary"
+msg["From"] = EMAIL_FROM
+msg["To"] = EMAIL_TO
+
+with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+    server.login(EMAIL_FROM, EMAIL_PASS)
+    server.send_message(msg)
+
+print("Email sent successfully.")
