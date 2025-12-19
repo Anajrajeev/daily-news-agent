@@ -37,10 +37,6 @@ jobs:
         cmake --build . --config Release
         mv bin/llama-cli ../../llama
 
-    - name: Download model
-      run: |
-        wget https://hf-mirror.com/TinyLlama/TinyLlama-1.1B-GGUF/resolve/main/tinyllama.gguf -O model.gguf
-
     - name: Run agent
       env:
         GMAIL_USER: ${{ secrets.GMAIL_USER }}
