@@ -43,6 +43,7 @@ result = subprocess.check_output([
     "-m", MODEL_PATH,
     "-p", prompt,
     "-n", "200",
+    "--ctx-size", "2048",
     "--temp", "0.2"
 ])
 
