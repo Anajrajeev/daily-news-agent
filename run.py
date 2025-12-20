@@ -1,54 +1,46 @@
-import os
 import asyncio
+import os
 import subprocess
 import smtplib
 from email.mime.text import MIMEText
 
 from deepharvest import DeepHarvest, CrawlConfig
 
-# ---------- CONFIG ----------
+
+# ---------------- CONFIG ----------------
 SITES = [
     "https://www.bbc.com/news",
     "https://www.reuters.com/world",
 ]
 
 MODEL_PATH = "model.gguf"
-LLAMA_BIN = "./llama"
+LLAMA_BIN = "./llama-cli"  # built from llama.cpp
 
-# ---------- CRAWL FUNCTION ----------
+MAX_CHARS = 12000
+
+
+# ---------------- CRAWL ----------------
 async def crawl_sites():
-    texts = []
+    config = CrawlConfig(
+        seed_urls=SITES,
+        max_depth=0,
+        enable_js=False,
+        exporters=["memory"],   # 🔑 NEW FEATURE
+    )
 
-    for site in SITES:
-        try:
-            config = CrawlConfig(
-                seed_urls=[site],
-                max_depth=0,          # homepage only
-                enable_js=False,       # faster + stable
-                max_urls=5,
-            )
+    crawler = DeepHarvest(config)
+    await crawler.initialize()
+    await crawler.crawl()
+    await crawler.shutdown()
 
-            crawler = DeepHarvest(config)
-            await crawler.initialize()
-            await crawler.crawl()
-
-            for page in crawler.storage.pages.values():
-                if page.content:
-                    texts.append(page.content)
-
-            await crawler.shutdown()
-
-        except Exception as e:
-            print(f"Failed to crawl {site}: {e}")
-
+    texts = crawler.exporters["memory"].texts
     return "\n\n".join(texts)
 
-# ---------- MAIN ----------
-async def main():
-    content = await crawl_sites()
 
-    if not content.strip():
-        content = "No significant news content found."
+# ---------------- LLM ----------------
+def run_llm(text: str) -> str:
+    if not text.strip():
+        return "NOTHING WORTHWHILE"
 
     prompt = f"""
 Scan the following news content.
@@ -59,10 +51,10 @@ NOTHING WORTHWHILE
 Otherwise, summarize all important events into ONE concise paragraph.
 
 CONTENT:
-{content[:12000]}
+{text[:MAX_CHARS]}
 """
 
-    result = subprocess.check_output(
+    result = subprocess.run(
         [
             LLAMA_BIN,
             "-m", MODEL_PATH,
@@ -71,20 +63,28 @@ CONTENT:
             "--ctx-size", "2048",
             "--temp", "0.2",
         ],
-        stderr=subprocess.STDOUT,
+        capture_output=True,
+        text=True,
     )
 
-    output = result.decode(errors="ignore").strip()
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr)
 
-    # ---------- EMAIL ----------
+    return result.stdout.strip()
+
+
+# ---------------- EMAIL ----------------
+def send_email(body: str):
     EMAIL_FROM = os.getenv("GMAIL_USER")
-    EMAIL_TO = os.getenv("GMAIL_USER")
     EMAIL_PASS = os.getenv("GMAIL_PASS")
+    EMAIL_TO = EMAIL_FROM
 
     if not EMAIL_FROM or not EMAIL_PASS:
-        raise RuntimeError("GMAIL_USER or GMAIL_PASS not set")
+        print("⚠️ Email credentials missing, skipping email.")
+        print(body)
+        return
 
-    msg = MIMEText(output)
+    msg = MIMEText(body)
     msg["Subject"] = "Daily News Summary"
     msg["From"] = EMAIL_FROM
     msg["To"] = EMAIL_TO
@@ -93,8 +93,24 @@ CONTENT:
         server.login(EMAIL_FROM, EMAIL_PASS)
         server.send_message(msg)
 
-    print("Email sent successfully.")
+    print("📧 Email sent successfully.")
 
-# ---------- RUN ----------
+
+# ---------------- MAIN ----------------
+async def main():
+    print("🕷 Crawling news sites...")
+    content = await crawl_sites()
+
+    if not content.strip():
+        print("📰 No meaningful content found.")
+        return
+
+    print("🧠 Running LLM...")
+    summary = run_llm(content)
+
+    print("✉️ Sending email...")
+    send_email(summary)
+
+
 if __name__ == "__main__":
     asyncio.run(main())
